@@ -7,21 +7,34 @@
     <style>
         /* Grunddesign */
         body { font-family: 'Segoe UI', Tahoma, sans-serif; background-color: #ece5dd; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        .container { background-color: white; width: 100%; max-width: 450px; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); overflow: hidden; display: flex; flex-direction: column; height: 600px; }
+        
+        /* Container ist jetzt breiter (800px), um Platz für die Seitenleiste zu machen */
+        .container { background-color: white; width: 100%; max-width: 800px; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); overflow: hidden; display: flex; flex-direction: column; height: 600px; }
         
         /* Login Screen */
-        #login-screen { padding: 40px 20px; text-align: center; display: flex; flex-direction: column; justify-content: center; height: 100%; }
+        #login-screen { padding: 40px 20px; text-align: center; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100%; }
         #login-screen h2 { color: #333; margin-bottom: 20px; }
-        #username { padding: 12px; font-size: 16px; border: 2px solid #ddd; border-radius: 8px; margin-bottom: 15px; outline: none; }
-        button { padding: 12px; font-size: 16px; background-color: #25D366; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
+        #username { padding: 12px; font-size: 16px; border: 2px solid #ddd; border-radius: 8px; margin-bottom: 15px; width: 100%; max-width: 300px; outline: none; }
+        button { padding: 12px 24px; font-size: 16px; background-color: #25D366; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.2s;}
         button:hover { background-color: #1ebe57; }
         
-        /* Chat Screen */
-        #chat-screen { display: none; flex-direction: column; height: 100%; }
-        .chat-header { background-color: #075E54; color: white; padding: 15px 20px; font-size: 18px; font-weight: bold; display: flex; justify-content: space-between; align-items: center; }
+        /* Chat Screen - teilt sich nun in linke und rechte Spalte */
+        #chat-screen { display: none; flex-direction: row; height: 100%; }
         
-        /* NEU: Online-Status Leiste */
-        #online-bar { background-color: #dcf8c6; color: #075E54; padding: 8px 20px; font-size: 13px; font-weight: bold; border-bottom: 1px solid #ccc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        /* NEU: Die linke Seitenleiste */
+        .sidebar { width: 250px; background-color: #f0f0f0; border-right: 1px solid #ddd; display: flex; flex-direction: column; }
+        .sidebar-header { background-color: #075E54; color: white; padding: 15px; font-size: 16px; font-weight: bold; }
+        .user-list { padding: 15px; overflow-y: auto; flex: 1; }
+        
+        /* Einzelner User in der Liste */
+        .user-item { padding: 8px 0; font-size: 15px; color: #333; display: flex; align-items: center; font-weight: 500; border-bottom: 1px solid #e0e0e0; }
+        /* Grüner Online-Punkt */
+        .user-item::before { content: ''; display: inline-block; width: 10px; height: 10px; background-color: #25D366; border-radius: 50%; margin-right: 10px; box-shadow: 0 0 5px rgba(37, 211, 102, 0.5); }
+        .user-item.is-me { color: #075E54; font-weight: bold; }
+
+        /* Der rechte Haupt-Chat-Bereich */
+        .main-chat { flex: 1; display: flex; flex-direction: column; }
+        .chat-header { background-color: #075E54; color: white; padding: 15px 20px; font-size: 18px; font-weight: bold; display: flex; justify-content: space-between; align-items: center; border-left: 1px solid #064d45; }
         
         /* Chat Box & Nachrichten */
         .chat-box { flex: 1; padding: 20px; overflow-y: auto; background-color: #e5ddd5; display: flex; flex-direction: column; }
@@ -44,31 +57,38 @@
 
     <div class="container">
         <div id="login-screen">
-            <h2>Public Server Chat</h2>
+            <h2>GitHub Echtzeit-Chat</h2>
             <input type="text" id="username" placeholder="Dein Name..." autocomplete="off">
             <button onclick="joinChat()">Chat betreten</button>
         </div>
 
         <div id="chat-screen">
-            <div class="chat-header" id="chat-header">Chat</div>
             
-            <div id="online-bar">Online: lädt...</div>
-
-            <div class="chat-box" id="chat-box"></div>
-            <div class="input-group">
-                <input type="text" id="message-input" placeholder="Nachricht..." autocomplete="off">
-                <button onclick="sendMessage()">Senden</button>
+            <div class="sidebar">
+                <div class="sidebar-header">👥 Online im Raum</div>
+                <div class="user-list" id="user-list">
+                    </div>
             </div>
+
+            <div class="main-chat">
+                <div class="chat-header" id="chat-header">Chat</div>
+                <div class="chat-box" id="chat-box"></div>
+                <div class="input-group">
+                    <input type="text" id="message-input" placeholder="Nachricht schreiben..." autocomplete="off">
+                    <button onclick="sendMessage()">Senden</button>
+                </div>
+            </div>
+
         </div>
     </div>
 
     <script>
         let currentUser = "";
-        let onlineUsers = new Set(); // Speichert alle Namen ohne Duplikate
+        let onlineUsers = new Set(); // Speichert alle eingeloggten User
         
         // MQTT Verbindung aufbauen
         const client = mqtt.connect('wss://broker.emqx.io:8084/mqtt');
-        const chatRoom = "mein-geheimer-github-chat-xyz-8923"; // Hier gerne einen eigenen Namen vergeben!
+        const chatRoom = "mein-geheimer-github-chat-xyz-8923"; // Raum-Name
 
         client.on('connect', function () {
             client.subscribe(chatRoom);
@@ -78,61 +98,66 @@
         client.on('message', function (topic, message) {
             const data = JSON.parse(message.toString());
             
-            // Prüfen, ob es eine Systemnachricht ist (Join/Leave) oder ein normaler Text
             if (data.type === 'system') {
                 handleSystemMessage(data);
             } else {
-                // Normale Chat-Nachricht
                 const msgType = (data.user === currentUser) ? 'own' : 'other';
                 addMessage(data.user, data.text, msgType);
                 
-                // Zur Sicherheit den Absender auch zur Online-Liste hinzufügen
+                // Absender zur Online-Liste hinzufügen (falls noch nicht drin)
                 onlineUsers.add(data.user);
-                updateOnlineBar();
+                updateUserList();
             }
         });
 
-        // Verarbeitet Logins und Logouts der anderen
         function handleSystemMessage(data) {
             if (data.action === 'join') {
                 onlineUsers.add(data.user);
                 addSystemMessage(`${data.user} ist beigetreten.`);
-                updateOnlineBar();
+                updateUserList();
                 
-                // Wenn jemand Neues kommt, sagen wir (wenn wir schon da sind) im Hintergrund "Hallo"
+                // Im Hintergrund antworten: "Ich bin auch da!"
                 if (data.user !== currentUser) {
                     client.publish(chatRoom, JSON.stringify({ type: 'system', action: 'present', user: currentUser }));
                 }
             } 
             else if (data.action === 'present') {
-                // Ein anderer Nutzer teilt uns leise mit, dass er bereits im Chat ist
                 onlineUsers.add(data.user);
-                updateOnlineBar();
+                updateUserList();
             } 
             else if (data.action === 'leave') {
                 onlineUsers.delete(data.user);
                 addSystemMessage(`${data.user} hat den Chat verlassen.`);
-                updateOnlineBar();
+                updateUserList();
             }
         }
 
-        // Aktualisiert die Anzeige-Leiste
-        function updateOnlineBar() {
-            const bar = document.getElementById('online-bar');
-            if (onlineUsers.size === 0) {
-                bar.innerText = "Online: Nur du";
-            } else {
-                // Macht aus dem "Set" eine durch Kommata getrennte Liste
-                bar.innerText = "Online: " + Array.from(onlineUsers).join(', ');
-            }
+        // Baut die Liste der User links neu auf
+        function updateUserList() {
+            const userListDiv = document.getElementById('user-list');
+            userListDiv.innerHTML = ""; // Alte Liste leeren
+            
+            // Jeden User als HTML-Element hinzufügen
+            onlineUsers.forEach(user => {
+                const userDiv = document.createElement('div');
+                userDiv.className = 'user-item';
+                
+                // Markiere den eigenen Namen besonders
+                if (user === currentUser) {
+                    userDiv.classList.add('is-me');
+                    userDiv.innerText = `${user} (Du)`;
+                } else {
+                    userDiv.innerText = user;
+                }
+                
+                userListDiv.appendChild(userDiv);
+            });
         }
 
-        // Login mit Enter-Taste
         document.getElementById('username').addEventListener('keypress', function (e) {
             if (e.key === 'Enter') joinChat();
         });
 
-        // Nachricht senden mit Enter-Taste
         document.getElementById('message-input').addEventListener('keypress', function (e) {
             if (e.key === 'Enter') sendMessage();
         });
@@ -141,15 +166,13 @@
             const nameInput = document.getElementById('username').value.trim();
             if (nameInput !== "") {
                 currentUser = nameInput;
-                onlineUsers.add(currentUser); // Uns selbst hinzufügen
+                onlineUsers.add(currentUser); // Uns selbst auf Online setzen
                 
                 document.getElementById('login-screen').style.display = 'none';
                 document.getElementById('chat-screen').style.display = 'flex';
-                document.getElementById('chat-header').innerText = `Eingeloggt als: ${currentUser}`;
                 
-                updateOnlineBar();
+                updateUserList(); // Liste links aktualisieren
                 
-                // Allen anderen mitteilen, dass wir da sind
                 client.publish(chatRoom, JSON.stringify({ type: 'system', action: 'join', user: currentUser }));
                 
                 document.getElementById('message-input').focus();
@@ -172,7 +195,6 @@
             messageInput.focus();
         }
 
-        // Zeichnet eine normale Chat-Nachricht
         function addMessage(sender, text, type) {
             const chatBox = document.getElementById('chat-box');
             const msgDiv = document.createElement('div');
@@ -188,7 +210,6 @@
             chatBox.scrollTop = chatBox.scrollHeight;
         }
 
-        // Zeichnet kleine Info-Texte in die Mitte (Beigetreten/Verlassen)
         function addSystemMessage(text) {
             const chatBox = document.getElementById('chat-box');
             const msgDiv = document.createElement('div');
@@ -198,7 +219,6 @@
             chatBox.scrollTop = chatBox.scrollHeight;
         }
 
-        // Wenn der Nutzer den Tab/Browser schließt, wird eine "leave" Nachricht gesendet
         window.addEventListener('beforeunload', function () {
             if (currentUser !== "") {
                 client.publish(chatRoom, JSON.stringify({ type: 'system', action: 'leave', user: currentUser }));
