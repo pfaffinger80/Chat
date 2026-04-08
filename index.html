@@ -8,7 +8,7 @@
         /* Grunddesign */
         body { font-family: 'Segoe UI', Tahoma, sans-serif; background-color: #ece5dd; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
         
-        /* Container ist jetzt breiter (800px), um Platz für die Seitenleiste zu machen */
+        /* Container Standard (für PC) */
         .container { background-color: white; width: 100%; max-width: 800px; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); overflow: hidden; display: flex; flex-direction: column; height: 600px; }
         
         /* Login Screen */
@@ -18,21 +18,20 @@
         button { padding: 12px 24px; font-size: 16px; background-color: #25D366; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.2s;}
         button:hover { background-color: #1ebe57; }
         
-        /* Chat Screen - teilt sich nun in linke und rechte Spalte */
+        /* Chat Screen */
         #chat-screen { display: none; flex-direction: row; height: 100%; }
         
-        /* NEU: Die linke Seitenleiste */
+        /* Linke Seitenleiste */
         .sidebar { width: 250px; background-color: #f0f0f0; border-right: 1px solid #ddd; display: flex; flex-direction: column; }
         .sidebar-header { background-color: #075E54; color: white; padding: 15px; font-size: 16px; font-weight: bold; }
         .user-list { padding: 15px; overflow-y: auto; flex: 1; }
         
-        /* Einzelner User in der Liste */
+        /* User in der Liste */
         .user-item { padding: 8px 0; font-size: 15px; color: #333; display: flex; align-items: center; font-weight: 500; border-bottom: 1px solid #e0e0e0; }
-        /* Grüner Online-Punkt */
         .user-item::before { content: ''; display: inline-block; width: 10px; height: 10px; background-color: #25D366; border-radius: 50%; margin-right: 10px; box-shadow: 0 0 5px rgba(37, 211, 102, 0.5); }
         .user-item.is-me { color: #075E54; font-weight: bold; }
 
-        /* Der rechte Haupt-Chat-Bereich */
+        /* Rechter Haupt-Chat-Bereich */
         .main-chat { flex: 1; display: flex; flex-direction: column; }
         .chat-header { background-color: #075E54; color: white; padding: 15px 20px; font-size: 18px; font-weight: bold; display: flex; justify-content: space-between; align-items: center; border-left: 1px solid #064d45; }
         
@@ -43,14 +42,40 @@
         .message.other { background-color: #ffffff; align-self: flex-start; border-bottom-left-radius: 0; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
         .message-sender { font-size: 12px; color: #888; margin-bottom: 4px; font-weight: bold; }
         
-        /* Systemnachrichten (Beigetreten/Verlassen) */
+        /* Systemnachrichten */
         .system-message { text-align: center; font-size: 12px; color: #555; background-color: #ffffff99; padding: 5px 10px; border-radius: 10px; align-self: center; margin-bottom: 10px; }
 
         /* Eingabefeld */
         .input-group { display: flex; padding: 10px; background-color: #f0f0f0; }
         #message-input { flex: 1; padding: 12px; border: none; border-radius: 20px; margin-right: 10px; font-size: 15px; outline: none; }
+
+        /* ========================================= */
+        /* NEU: MOBILES DESIGN (Smartphones)         */
+        /* ========================================= */
+        @media (max-width: 768px) {
+            .container {
+                max-width: 100%;      /* Volle Breite */
+                height: 100vh;        /* Volle Bildschirmhöhe */
+                border-radius: 0;     /* Ecken eckig machen */
+            }
+            
+            #chat-screen {
+                flex-direction: column; /* Elemente untereinander stapeln, nicht nebeneinander */
+            }
+            
+            .sidebar {
+                width: 100%;          /* Seitenleiste nimmt volle Breite ein */
+                height: 120px;        /* Aber nur 120px in der Höhe (damit Platz für den Chat bleibt) */
+                border-right: none;
+                border-bottom: 2px solid #075E54;
+                flex: none;           /* Verhindert, dass die Leiste mitwächst */
+            }
+
+            .chat-header {
+                border-left: none;    /* Strich links entfernen */
+            }
+        }
     </style>
-    
     <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
 </head>
 <body>
@@ -66,8 +91,7 @@
             
             <div class="sidebar">
                 <div class="sidebar-header">👥 Online im Raum</div>
-                <div class="user-list" id="user-list">
-                    </div>
+                <div class="user-list" id="user-list"></div>
             </div>
 
             <div class="main-chat">
@@ -84,17 +108,15 @@
 
     <script>
         let currentUser = "";
-        let onlineUsers = new Set(); // Speichert alle eingeloggten User
+        let onlineUsers = new Set();
         
-        // MQTT Verbindung aufbauen
         const client = mqtt.connect('wss://broker.emqx.io:8084/mqtt');
-        const chatRoom = "mein-geheimer-github-chat-xyz-8923"; // Raum-Name
+        const chatRoom = "mein-geheimer-github-chat-xyz-8923";
 
         client.on('connect', function () {
             client.subscribe(chatRoom);
         });
 
-        // Eingehende Nachrichten verarbeiten
         client.on('message', function (topic, message) {
             const data = JSON.parse(message.toString());
             
@@ -103,8 +125,6 @@
             } else {
                 const msgType = (data.user === currentUser) ? 'own' : 'other';
                 addMessage(data.user, data.text, msgType);
-                
-                // Absender zur Online-Liste hinzufügen (falls noch nicht drin)
                 onlineUsers.add(data.user);
                 updateUserList();
             }
@@ -115,41 +135,32 @@
                 onlineUsers.add(data.user);
                 addSystemMessage(`${data.user} ist beigetreten.`);
                 updateUserList();
-                
-                // Im Hintergrund antworten: "Ich bin auch da!"
                 if (data.user !== currentUser) {
                     client.publish(chatRoom, JSON.stringify({ type: 'system', action: 'present', user: currentUser }));
                 }
-            } 
-            else if (data.action === 'present') {
+            } else if (data.action === 'present') {
                 onlineUsers.add(data.user);
                 updateUserList();
-            } 
-            else if (data.action === 'leave') {
+            } else if (data.action === 'leave') {
                 onlineUsers.delete(data.user);
                 addSystemMessage(`${data.user} hat den Chat verlassen.`);
                 updateUserList();
             }
         }
 
-        // Baut die Liste der User links neu auf
         function updateUserList() {
             const userListDiv = document.getElementById('user-list');
-            userListDiv.innerHTML = ""; // Alte Liste leeren
+            userListDiv.innerHTML = ""; 
             
-            // Jeden User als HTML-Element hinzufügen
             onlineUsers.forEach(user => {
                 const userDiv = document.createElement('div');
                 userDiv.className = 'user-item';
-                
-                // Markiere den eigenen Namen besonders
                 if (user === currentUser) {
                     userDiv.classList.add('is-me');
                     userDiv.innerText = `${user} (Du)`;
                 } else {
                     userDiv.innerText = user;
                 }
-                
                 userListDiv.appendChild(userDiv);
             });
         }
@@ -166,15 +177,11 @@
             const nameInput = document.getElementById('username').value.trim();
             if (nameInput !== "") {
                 currentUser = nameInput;
-                onlineUsers.add(currentUser); // Uns selbst auf Online setzen
-                
+                onlineUsers.add(currentUser);
                 document.getElementById('login-screen').style.display = 'none';
                 document.getElementById('chat-screen').style.display = 'flex';
-                
-                updateUserList(); // Liste links aktualisieren
-                
+                updateUserList();
                 client.publish(chatRoom, JSON.stringify({ type: 'system', action: 'join', user: currentUser }));
-                
                 document.getElementById('message-input').focus();
             }
         }
@@ -184,11 +191,7 @@
             const text = messageInput.value.trim();
             
             if (text !== "") {
-                const messageData = {
-                    type: 'chat',
-                    user: currentUser,
-                    text: text
-                };
+                const messageData = { type: 'chat', user: currentUser, text: text };
                 client.publish(chatRoom, JSON.stringify(messageData));
                 messageInput.value = '';
             }
@@ -199,13 +202,11 @@
             const chatBox = document.getElementById('chat-box');
             const msgDiv = document.createElement('div');
             msgDiv.className = `message ${type}`;
-            
             if (type === 'other') {
                 msgDiv.innerHTML = `<div class="message-sender">${sender}</div>${text}`;
             } else {
                 msgDiv.innerText = text;
             }
-            
             chatBox.appendChild(msgDiv);
             chatBox.scrollTop = chatBox.scrollHeight;
         }
