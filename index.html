@@ -5,21 +5,35 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Open Server Chat (MQTT)</title>
     <style>
-        /* Das exakt gleiche Design wie vorher */
+        /* Grunddesign */
         body { font-family: 'Segoe UI', Tahoma, sans-serif; background-color: #ece5dd; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
         .container { background-color: white; width: 100%; max-width: 450px; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); overflow: hidden; display: flex; flex-direction: column; height: 600px; }
+        
+        /* Login Screen */
         #login-screen { padding: 40px 20px; text-align: center; display: flex; flex-direction: column; justify-content: center; height: 100%; }
         #login-screen h2 { color: #333; margin-bottom: 20px; }
         #username { padding: 12px; font-size: 16px; border: 2px solid #ddd; border-radius: 8px; margin-bottom: 15px; outline: none; }
         button { padding: 12px; font-size: 16px; background-color: #25D366; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; }
         button:hover { background-color: #1ebe57; }
+        
+        /* Chat Screen */
         #chat-screen { display: none; flex-direction: column; height: 100%; }
-        .chat-header { background-color: #075E54; color: white; padding: 15px 20px; font-size: 18px; font-weight: bold; }
+        .chat-header { background-color: #075E54; color: white; padding: 15px 20px; font-size: 18px; font-weight: bold; display: flex; justify-content: space-between; align-items: center; }
+        
+        /* NEU: Online-Status Leiste */
+        #online-bar { background-color: #dcf8c6; color: #075E54; padding: 8px 20px; font-size: 13px; font-weight: bold; border-bottom: 1px solid #ccc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        
+        /* Chat Box & Nachrichten */
         .chat-box { flex: 1; padding: 20px; overflow-y: auto; background-color: #e5ddd5; display: flex; flex-direction: column; }
         .message { max-width: 75%; padding: 10px 15px; border-radius: 15px; margin-bottom: 10px; line-height: 1.4; word-wrap: break-word; }
         .message.own { background-color: #dcf8c6; align-self: flex-end; border-bottom-right-radius: 0; }
         .message.other { background-color: #ffffff; align-self: flex-start; border-bottom-left-radius: 0; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
         .message-sender { font-size: 12px; color: #888; margin-bottom: 4px; font-weight: bold; }
+        
+        /* Systemnachrichten (Beigetreten/Verlassen) */
+        .system-message { text-align: center; font-size: 12px; color: #555; background-color: #ffffff99; padding: 5px 10px; border-radius: 10px; align-self: center; margin-bottom: 10px; }
+
+        /* Eingabefeld */
         .input-group { display: flex; padding: 10px; background-color: #f0f0f0; }
         #message-input { flex: 1; padding: 12px; border: none; border-radius: 20px; margin-right: 10px; font-size: 15px; outline: none; }
     </style>
@@ -37,6 +51,9 @@
 
         <div id="chat-screen">
             <div class="chat-header" id="chat-header">Chat</div>
+            
+            <div id="online-bar">Online: lädt...</div>
+
             <div class="chat-box" id="chat-box"></div>
             <div class="input-group">
                 <input type="text" id="message-input" placeholder="Nachricht..." autocomplete="off">
@@ -47,35 +64,75 @@
 
     <script>
         let currentUser = "";
+        let onlineUsers = new Set(); // Speichert alle Namen ohne Duplikate
         
-        // 1. Verbinde mit dem offenen, kostenlosen MQTT-Server über Websockets
+        // MQTT Verbindung aufbauen
         const client = mqtt.connect('wss://broker.emqx.io:8084/mqtt');
-        
-        // 2. Erfinde einen einzigartigen Raumnamen (damit dir keine Fremden dazwischenfunken)
-        // Ändere diesen Namen am besten in etwas Geheimes!
-        const chatRoom = "mein-geheimer-github-chat-xyz-8923"; 
+        const chatRoom = "mein-geheimer-github-chat-xyz-8923"; // Hier gerne einen eigenen Namen vergeben!
 
         client.on('connect', function () {
-            console.log("Verbunden mit öffentlichem Server!");
-            // Wir "abonnieren" unseren geheimen Raum
             client.subscribe(chatRoom);
         });
 
-        // 3. Wenn eine Nachricht auf dem Server ankommt
+        // Eingehende Nachrichten verarbeiten
         client.on('message', function (topic, message) {
-            // Die Nachricht kommt als Text an und wird in ein Objekt umgewandelt
             const data = JSON.parse(message.toString());
             
-            // Prüfen, ob die Nachricht von uns selbst oder jemand anderem ist
-            const type = (data.user === currentUser) ? 'own' : 'other';
-            addMessage(data.user, data.text, type);
+            // Prüfen, ob es eine Systemnachricht ist (Join/Leave) oder ein normaler Text
+            if (data.type === 'system') {
+                handleSystemMessage(data);
+            } else {
+                // Normale Chat-Nachricht
+                const msgType = (data.user === currentUser) ? 'own' : 'other';
+                addMessage(data.user, data.text, msgType);
+                
+                // Zur Sicherheit den Absender auch zur Online-Liste hinzufügen
+                onlineUsers.add(data.user);
+                updateOnlineBar();
+            }
         });
 
-        // Login und Senden Funktionen
+        // Verarbeitet Logins und Logouts der anderen
+        function handleSystemMessage(data) {
+            if (data.action === 'join') {
+                onlineUsers.add(data.user);
+                addSystemMessage(`${data.user} ist beigetreten.`);
+                updateOnlineBar();
+                
+                // Wenn jemand Neues kommt, sagen wir (wenn wir schon da sind) im Hintergrund "Hallo"
+                if (data.user !== currentUser) {
+                    client.publish(chatRoom, JSON.stringify({ type: 'system', action: 'present', user: currentUser }));
+                }
+            } 
+            else if (data.action === 'present') {
+                // Ein anderer Nutzer teilt uns leise mit, dass er bereits im Chat ist
+                onlineUsers.add(data.user);
+                updateOnlineBar();
+            } 
+            else if (data.action === 'leave') {
+                onlineUsers.delete(data.user);
+                addSystemMessage(`${data.user} hat den Chat verlassen.`);
+                updateOnlineBar();
+            }
+        }
+
+        // Aktualisiert die Anzeige-Leiste
+        function updateOnlineBar() {
+            const bar = document.getElementById('online-bar');
+            if (onlineUsers.size === 0) {
+                bar.innerText = "Online: Nur du";
+            } else {
+                // Macht aus dem "Set" eine durch Kommata getrennte Liste
+                bar.innerText = "Online: " + Array.from(onlineUsers).join(', ');
+            }
+        }
+
+        // Login mit Enter-Taste
         document.getElementById('username').addEventListener('keypress', function (e) {
             if (e.key === 'Enter') joinChat();
         });
 
+        // Nachricht senden mit Enter-Taste
         document.getElementById('message-input').addEventListener('keypress', function (e) {
             if (e.key === 'Enter') sendMessage();
         });
@@ -84,9 +141,17 @@
             const nameInput = document.getElementById('username').value.trim();
             if (nameInput !== "") {
                 currentUser = nameInput;
+                onlineUsers.add(currentUser); // Uns selbst hinzufügen
+                
                 document.getElementById('login-screen').style.display = 'none';
                 document.getElementById('chat-screen').style.display = 'flex';
                 document.getElementById('chat-header').innerText = `Eingeloggt als: ${currentUser}`;
+                
+                updateOnlineBar();
+                
+                // Allen anderen mitteilen, dass wir da sind
+                client.publish(chatRoom, JSON.stringify({ type: 'system', action: 'join', user: currentUser }));
+                
                 document.getElementById('message-input').focus();
             }
         }
@@ -97,17 +162,17 @@
             
             if (text !== "") {
                 const messageData = {
+                    type: 'chat',
                     user: currentUser,
                     text: text
                 };
-                
-                // Wir senden das Datenpaket an den öffentlichen Server in unseren Raum
                 client.publish(chatRoom, JSON.stringify(messageData));
                 messageInput.value = '';
             }
             messageInput.focus();
         }
 
+        // Zeichnet eine normale Chat-Nachricht
         function addMessage(sender, text, type) {
             const chatBox = document.getElementById('chat-box');
             const msgDiv = document.createElement('div');
@@ -122,6 +187,23 @@
             chatBox.appendChild(msgDiv);
             chatBox.scrollTop = chatBox.scrollHeight;
         }
+
+        // Zeichnet kleine Info-Texte in die Mitte (Beigetreten/Verlassen)
+        function addSystemMessage(text) {
+            const chatBox = document.getElementById('chat-box');
+            const msgDiv = document.createElement('div');
+            msgDiv.className = 'system-message';
+            msgDiv.innerText = text;
+            chatBox.appendChild(msgDiv);
+            chatBox.scrollTop = chatBox.scrollHeight;
+        }
+
+        // Wenn der Nutzer den Tab/Browser schließt, wird eine "leave" Nachricht gesendet
+        window.addEventListener('beforeunload', function () {
+            if (currentUser !== "") {
+                client.publish(chatRoom, JSON.stringify({ type: 'system', action: 'leave', user: currentUser }));
+            }
+        });
     </script>
 </body>
 </html>
