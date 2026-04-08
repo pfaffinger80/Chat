@@ -3,123 +3,45 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>Open Server Chat (MQTT)</title>
+    <title>GitHub Chat (Persistent)</title>
     <style>
-        /* Grunddesign */
-        body { 
-            font-family: '-apple-system', 'Segoe UI', Tahoma, sans-serif; /* Apple Systemschrift bevorzugen */
-            background-color: #ece5dd; 
-            display: flex; 
-            justify-content: center; 
-            align-items: center; 
-            height: 100dvh; /* dvh statt vh für iPhones */
-            margin: 0; 
-            overflow: hidden; /* Verhindert das Gummiband-Scrollen auf der ganzen Seite */
-        }
+        body { font-family: '-apple-system', 'Segoe UI', sans-serif; background-color: #ece5dd; display: flex; justify-content: center; align-items: center; height: 100dvh; margin: 0; overflow: hidden; }
+        .container { background-color: white; width: 100%; max-width: 800px; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); overflow: hidden; display: flex; flex-direction: column; height: 600px; }
         
-        /* Container Standard (für PC) */
-        .container { 
-            background-color: white; 
-            width: 100%; 
-            max-width: 800px; 
-            border-radius: 12px; 
-            box-shadow: 0 8px 24px rgba(0,0,0,0.15); 
-            overflow: hidden; 
-            display: flex; 
-            flex-direction: column; 
-            height: 600px; 
-        }
-        
-        /* Login Screen */
         #login-screen { padding: 40px 20px; text-align: center; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100%; }
-        #login-screen h2 { color: #333; margin-bottom: 20px; }
         #username { padding: 12px; font-size: 16px; border: 2px solid #ddd; border-radius: 8px; margin-bottom: 15px; width: 100%; max-width: 300px; outline: none; }
-        button { padding: 12px 24px; font-size: 16px; background-color: #25D366; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.2s; -webkit-appearance: none; }
-        button:hover { background-color: #1ebe57; }
         
-        /* Chat Screen */
+        button { padding: 12px 24px; font-size: 16px; background-color: #25D366; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; -webkit-appearance: none; }
+        .btn-logout { background-color: #ff5f5f; padding: 5px 10px; font-size: 12px; margin-left: 10px; }
+
         #chat-screen { display: none; flex-direction: row; height: 100%; width: 100%; }
         
-        /* Linke Seitenleiste */
         .sidebar { width: 250px; background-color: #f0f0f0; border-right: 1px solid #ddd; display: flex; flex-direction: column; }
         .sidebar-header { background-color: #075E54; color: white; padding: 15px; font-size: 16px; font-weight: bold; }
-        .user-list { padding: 15px; overflow-y: auto; flex: 1; -webkit-overflow-scrolling: touch; } /* Flüssiges Scrollen auf iOS */
+        .user-list { padding: 15px; overflow-y: auto; flex: 1; -webkit-overflow-scrolling: touch; }
         
-        /* User in der Liste */
         .user-item { padding: 8px 0; font-size: 15px; color: #333; display: flex; align-items: center; font-weight: 500; border-bottom: 1px solid #e0e0e0; }
-        .user-item::before { content: ''; display: inline-block; width: 10px; height: 10px; background-color: #25D366; border-radius: 50%; margin-right: 10px; box-shadow: 0 0 5px rgba(37, 211, 102, 0.5); }
+        .user-item::before { content: ''; display: inline-block; width: 10px; height: 10px; background-color: #25D366; border-radius: 50%; margin-right: 10px; }
         .user-item.is-me { color: #075E54; font-weight: bold; }
 
-        /* Rechter Haupt-Chat-Bereich */
         .main-chat { flex: 1; display: flex; flex-direction: column; height: 100%; }
-        .chat-header { background-color: #075E54; color: white; padding: 15px 20px; font-size: 18px; font-weight: bold; display: flex; justify-content: space-between; align-items: center; border-left: 1px solid #064d45; }
+        .chat-header { background-color: #075E54; color: white; padding: 15px 20px; font-size: 18px; font-weight: bold; display: flex; justify-content: space-between; align-items: center; }
         
-        /* Chat Box & Nachrichten */
-        .chat-box { flex: 1; padding: 20px; overflow-y: auto; background-color: #e5ddd5; display: flex; flex-direction: column; -webkit-overflow-scrolling: touch; } /* Flüssiges Scrollen auf iOS */
+        .chat-box { flex: 1; padding: 20px; overflow-y: auto; background-color: #e5ddd5; display: flex; flex-direction: column; -webkit-overflow-scrolling: touch; }
         .message { max-width: 80%; padding: 10px 15px; border-radius: 15px; margin-bottom: 10px; line-height: 1.4; word-wrap: break-word; font-size: 15px; }
         .message.own { background-color: #dcf8c6; align-self: flex-end; border-bottom-right-radius: 0; }
         .message.other { background-color: #ffffff; align-self: flex-start; border-bottom-left-radius: 0; box-shadow: 0 1px 2px rgba(0,0,0,0.1); }
         .message-sender { font-size: 12px; color: #888; margin-bottom: 4px; font-weight: bold; }
-        
-        /* Systemnachrichten */
-        .system-message { text-align: center; font-size: 12px; color: #555; background-color: #ffffff99; padding: 5px 10px; border-radius: 10px; align-self: center; margin-bottom: 10px; }
 
-        /* Eingabefeld */
-        .input-group { display: flex; padding: 10px; background-color: #f0f0f0; padding-bottom: env(safe-area-inset-bottom, 10px); } /* Berücksichtigt den iPhone Home-Balken */
-        #message-input { flex: 1; padding: 12px; border: none; border-radius: 20px; margin-right: 10px; font-size: 16px; outline: none; } /* Font-size 16px verhindert iOS Auto-Zoom */
+        .input-group { display: flex; padding: 10px; background-color: #f0f0f0; padding-bottom: env(safe-area-inset-bottom, 10px); }
+        #message-input { flex: 1; padding: 12px; border: none; border-radius: 20px; margin-right: 10px; font-size: 16px; outline: none; }
 
-        /* ========================================= */
-        /* MOBILES DESIGN (Smartphones & iPhones)    */
-        /* ========================================= */
         @media (max-width: 768px) {
-            body {
-                align-items: stretch; /* Dehnt Container komplett aus */
-            }
-
-            .container {
-                max-width: 100%;      
-                height: 100dvh;       /* Dynamische Höhe für Safari! */
-                max-height: 100dvh;
-                border-radius: 0;     
-                border: none;
-            }
-            
-            #chat-screen {
-                flex-direction: column; 
-            }
-            
-            .sidebar {
-                width: 100%;          
-                height: 80px;         /* Etwas schmaler gemacht für mehr Chat-Platz */
-                min-height: 80px;     
-                border-right: none;
-                border-bottom: 1px solid #ccc;
-                flex: none;           
-            }
-
-            .sidebar-header {
-                padding: 10px 15px;
-                font-size: 14px;
-            }
-
-            .user-list {
-                padding: 10px 15px;
-                display: flex;        /* Namen nebeneinander scrollen statt untereinander */
-                overflow-x: auto;     
-                overflow-y: hidden;
-                white-space: nowrap;
-                align-items: center;
-            }
-
-            .user-item {
-                border-bottom: none;
-                margin-right: 15px;
-                padding: 0;
-            }
-
-            .chat-header {
-                border-left: none;    
-            }
+            .container { max-width: 100%; height: 100dvh; border-radius: 0; }
+            #chat-screen { flex-direction: column; }
+            .sidebar { width: 100%; height: 80px; min-height: 80px; border-right: none; border-bottom: 1px solid #ccc; flex: none; }
+            .user-list { display: flex; overflow-x: auto; white-space: nowrap; align-items: center; }
+            .user-item { border-bottom: none; margin-right: 15px; }
         }
     </style>
     <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
@@ -134,146 +56,121 @@
         </div>
 
         <div id="chat-screen">
-            
             <div class="sidebar">
-                <div class="sidebar-header">👥 Online im Raum</div>
+                <div class="sidebar-header">👥 Online</div>
                 <div class="user-list" id="user-list"></div>
             </div>
 
             <div class="main-chat">
-                <div class="chat-header" id="chat-header">Chat</div>
+                <div class="chat-header">
+                    <span id="display-name">Chat</span>
+                    <button class="btn-logout" onclick="logout()">Logout</button>
+                </div>
                 <div class="chat-box" id="chat-box"></div>
                 <div class="input-group">
                     <input type="text" id="message-input" placeholder="Nachricht..." autocomplete="off">
                     <button onclick="sendMessage()">Senden</button>
                 </div>
             </div>
-
         </div>
     </div>
 
     <script>
         let currentUser = "";
         let onlineUsers = new Set();
-        
         const client = mqtt.connect('wss://broker.emqx.io:8084/mqtt');
         const chatRoom = "mein-geheimer-github-chat-xyz-8923";
 
-        client.on('connect', function () {
-            client.subscribe(chatRoom);
-        });
+        client.on('connect', () => client.subscribe(chatRoom));
 
-        client.on('message', function (topic, message) {
+        client.on('message', (topic, message) => {
             const data = JSON.parse(message.toString());
-            
             if (data.type === 'system') {
-                handleSystemMessage(data);
+                if (data.action === 'join') {
+                    onlineUsers.add(data.user);
+                    updateUserList();
+                    if (data.user !== currentUser) client.publish(chatRoom, JSON.stringify({ type: 'system', action: 'present', user: currentUser }));
+                } else if (data.action === 'present') {
+                    onlineUsers.add(data.user);
+                    updateUserList();
+                } else if (data.action === 'leave') {
+                    onlineUsers.delete(data.user);
+                    updateUserList();
+                }
             } else {
-                const msgType = (data.user === currentUser) ? 'own' : 'other';
-                addMessage(data.user, data.text, msgType);
+                addMessage(data.user, data.text, data.user === currentUser ? 'own' : 'other');
                 onlineUsers.add(data.user);
                 updateUserList();
             }
         });
 
-        function handleSystemMessage(data) {
-            if (data.action === 'join') {
-                onlineUsers.add(data.user);
-                addSystemMessage(`${data.user} ist beigetreten.`);
-                updateUserList();
-                if (data.user !== currentUser) {
-                    client.publish(chatRoom, JSON.stringify({ type: 'system', action: 'present', user: currentUser }));
-                }
-            } else if (data.action === 'present') {
-                onlineUsers.add(data.user);
-                updateUserList();
-            } else if (data.action === 'leave') {
-                onlineUsers.delete(data.user);
-                addSystemMessage(`${data.user} hat den Chat verlassen.`);
-                updateUserList();
-            }
-        }
-
-        function updateUserList() {
-            const userListDiv = document.getElementById('user-list');
-            userListDiv.innerHTML = ""; 
-            
-            onlineUsers.forEach(user => {
-                const userDiv = document.createElement('div');
-                userDiv.className = 'user-item';
-                if (user === currentUser) {
-                    userDiv.classList.add('is-me');
-                    userDiv.innerText = `${user} (Du)`;
-                } else {
-                    userDiv.innerText = user;
-                }
-                userListDiv.appendChild(userDiv);
-            });
-        }
-
-        document.getElementById('username').addEventListener('keypress', function (e) {
-            if (e.key === 'Enter') joinChat();
-        });
-
-        document.getElementById('message-input').addEventListener('keypress', function (e) {
-            if (e.key === 'Enter') sendMessage();
-        });
-
-        function joinChat() {
-            const nameInput = document.getElementById('username').value.trim();
+        function joinChat(storedName = null) {
+            const nameInput = storedName || document.getElementById('username').value.trim();
             if (nameInput !== "") {
                 currentUser = nameInput;
-                onlineUsers.add(currentUser);
+                localStorage.setItem('chat_user', currentUser); // NAME SPEICHERN
+                
                 document.getElementById('login-screen').style.display = 'none';
                 document.getElementById('chat-screen').style.display = 'flex';
+                document.getElementById('display-name').innerText = currentUser;
+                
+                onlineUsers.add(currentUser);
                 updateUserList();
                 client.publish(chatRoom, JSON.stringify({ type: 'system', action: 'join', user: currentUser }));
                 document.getElementById('message-input').focus();
             }
         }
 
-        function sendMessage() {
-            const messageInput = document.getElementById('message-input');
-            const text = messageInput.value.trim();
-            
-            if (text !== "") {
-                const messageData = { type: 'chat', user: currentUser, text: text };
-                client.publish(chatRoom, JSON.stringify(messageData));
-                messageInput.value = '';
+        function logout() {
+            client.publish(chatRoom, JSON.stringify({ type: 'system', action: 'leave', user: currentUser }));
+            localStorage.removeItem('chat_user'); // SPEICHER LÖSCHEN
+            location.reload(); // Seite neu laden
+        }
+
+        // PRÜFEN OB NAME GESPEICHERT IST BEIM START
+        window.onload = () => {
+            const savedName = localStorage.getItem('chat_user');
+            if (savedName) {
+                // Ein kleiner Timeout hilft, damit MQTT Zeit zum Verbinden hat
+                setTimeout(() => joinChat(savedName), 500);
             }
-            
-            // Auf iPhones ist es oft besser, den Fokus nach dem Senden zu behalten,
-            // damit die Tastatur nicht ständig auf und zu klappt.
-            messageInput.focus();
+        };
+
+        function sendMessage() {
+            const input = document.getElementById('message-input');
+            if (input.value.trim() !== "") {
+                client.publish(chatRoom, JSON.stringify({ type: 'chat', user: currentUser, text: input.value.trim() }));
+                input.value = '';
+            }
+            input.focus();
+        }
+
+        function updateUserList() {
+            const list = document.getElementById('user-list');
+            list.innerHTML = "";
+            onlineUsers.forEach(user => {
+                const div = document.createElement('div');
+                div.className = 'user-item' + (user === currentUser ? ' is-me' : '');
+                div.innerText = user + (user === currentUser ? ' (Du)' : '');
+                list.appendChild(div);
+            });
         }
 
         function addMessage(sender, text, type) {
-            const chatBox = document.getElementById('chat-box');
-            const msgDiv = document.createElement('div');
-            msgDiv.className = `message ${type}`;
-            if (type === 'other') {
-                msgDiv.innerHTML = `<div class="message-sender">${sender}</div>${text}`;
-            } else {
-                msgDiv.innerText = text;
-            }
-            chatBox.appendChild(msgDiv);
-            chatBox.scrollTop = chatBox.scrollHeight;
+            const box = document.getElementById('chat-box');
+            const div = document.createElement('div');
+            div.className = `message ${type}`;
+            div.innerHTML = type === 'other' ? `<div class="message-sender">${sender}</div>${text}` : text;
+            box.appendChild(div);
+            box.scrollTop = box.scrollHeight;
         }
 
-        function addSystemMessage(text) {
-            const chatBox = document.getElementById('chat-box');
-            const msgDiv = document.createElement('div');
-            msgDiv.className = 'system-message';
-            msgDiv.innerText = text;
-            chatBox.appendChild(msgDiv);
-            chatBox.scrollTop = chatBox.scrollHeight;
-        }
+        window.onbeforeunload = () => {
+            if (currentUser) client.publish(chatRoom, JSON.stringify({ type: 'system', action: 'leave', user: currentUser }));
+        };
 
-        window.addEventListener('beforeunload', function () {
-            if (currentUser !== "") {
-                client.publish(chatRoom, JSON.stringify({ type: 'system', action: 'leave', user: currentUser }));
-            }
-        });
+        document.getElementById('username').onkeypress = (e) => { if(e.key === 'Enter') joinChat(); };
+        document.getElementById('message-input').onkeypress = (e) => { if(e.key === 'Enter') sendMessage(); };
     </script>
 </body>
 </html>
